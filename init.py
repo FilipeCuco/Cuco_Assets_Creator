@@ -1,26 +1,29 @@
 bl_info = {
     "name": "Cuco Assets Creator",
+    "description": "Create Assets for GTA V.",
     "author": "Filipe Cuco",
-    "description": "Create Assets to GTA V",
-    "blender": (4, 0, 0),
-    "version": (1, 0, 0),
+    "version": (1, 0),
+    "blender": (4, 2, 0),
 }
 
 import bpy
 import re
 
 def remove_object_and_children(obj, removed_objects):
-    """Remove o objeto e todos os seus filhos de forma recursiva."""
+    """Recursively remove the object and all its children."""
     for child in list(obj.children):
         if child not in removed_objects:
             remove_object_and_children(child, removed_objects)
     if obj not in removed_objects:
-        bpy.data.objects.remove(obj, do_unlink=True)
-        removed_objects.add(obj)
+        try:
+            bpy.data.objects.remove(obj, do_unlink=True)
+            removed_objects.add(obj)
+        except Exception as e:
+            print(f"Error removing object: {e}")
 
 def merge_objects(objects_to_merge, new_name):
-    """Mescla uma lista de objetos em um novo objeto e remove o parent original."""
-    bpy.ops.object.select_all(action="DESELECT")
+    """Merge a list of objects into a new object and remove the original parent."""
+    bpy.ops.object.select_all(action='DESELECT')
     for obj in objects_to_merge:
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
@@ -35,10 +38,9 @@ def merge_objects(objects_to_merge, new_name):
     return None
 
 def cuco_convert_to_asset():
-    """Converte e remove ativos conforme especificado."""
+    """Convert and remove assets as specified."""
     try:
         bpy.ops.ed.undo_push(message="Cuco Assets Conversion Start")
-
         bpy.ops.object.mode_set(mode='OBJECT')
         bpy.ops.object.select_all(action='DESELECT')
 
@@ -69,20 +71,10 @@ def cuco_convert_to_asset():
         bpy.ops.ed.undo_push(message="Cuco Assets Conversion End")
 
     except Exception as e:
-        print(f"Erro durante a conversão para asset: {e}")
-
-def cuco_asset_remove_suffix():
-    """Remove numeric suffixes from object names."""
-    for obj in bpy.context.scene.objects:
-        try:
-            new_name = re.sub(r"\.\d+$", "", obj.name)
-            if new_name != obj.name:
-                obj.name = new_name
-        except Exception as e:
-            print(f"Erro ao remover sufixo do nome do objeto: {e}")
+        print(f"Error during asset conversion: {e}")
 
 def process_drawable_objects(first_parent, objects_to_remove):
-    """Processa objetos do tipo 'sollumz_drawable'."""
+    """Process objects of type 'sollumz_drawable'."""
     for obj in list(first_parent.children):
         try:
             if obj.sollum_type == "sollumz_bound_box":
@@ -103,12 +95,12 @@ def process_drawable_objects(first_parent, objects_to_remove):
                 if not hasattr(obj, "asset_data") or not obj.asset_data:
                     objects_to_remove.append(obj)
         except Exception as e:
-            print(f"Erro ao processar objeto: {e}")
+            print(f"Error processing object: {e}")
 
     objects_to_remove.append(first_parent)
 
 def process_fragment_objects(first_parent, objects_to_remove, removed_objects):
-    """Processa objetos do tipo 'sollumz_fragment'."""
+    """Process objects of type 'sollumz_fragment'."""
     for child in list(first_parent.children):
         try:
             if child.name.endswith(".col"):
@@ -129,9 +121,19 @@ def process_fragment_objects(first_parent, objects_to_remove, removed_objects):
                         model.asset_generate_preview()
                         objects_to_remove.append(model)
         except Exception as e:
-            print(f"Erro ao processar fragmento: {e}")
+            print(f"Error processing fragment: {e}")
 
     objects_to_remove.append(first_parent)
+
+def cuco_asset_remove_suffix():
+    """Remove numeric suffixes from object names."""
+    for obj in bpy.context.scene.objects:
+        try:
+            new_name = re.sub(r"\.\d+$", "", obj.name)
+            if new_name != obj.name:
+                obj.name = new_name
+        except Exception as e:
+            print(f"Error removing suffix: {e}")
 
 class ConvertToGTAVAsset(bpy.types.Operator):
     """Run the Cuco Assets Creator script"""
