@@ -1,6 +1,6 @@
 bl_info = {
     "name": "Cuco Assets Creator",
-    "description": "Create Assets for GTA V.",
+    "description": "Create Assets to GTA V.",
     "author": "Filipe Cuco",
     "version": (1, 0),
     "blender": (4, 2, 0),
@@ -10,20 +10,17 @@ import bpy
 import re
 
 def remove_object_and_children(obj, removed_objects):
-    """Recursively remove the object and all its children."""
+    """Remove o objeto e todos os seus filhos de forma recursiva."""
     for child in list(obj.children):
         if child not in removed_objects:
             remove_object_and_children(child, removed_objects)
     if obj not in removed_objects:
-        try:
-            bpy.data.objects.remove(obj, do_unlink=True)
-            removed_objects.add(obj)
-        except Exception as e:
-            print(f"Error removing object: {e}")
+        bpy.data.objects.remove(obj, do_unlink=True)
+        removed_objects.add(obj)
 
 def merge_objects(objects_to_merge, new_name):
-    """Merge a list of objects into a new object and remove the original parent."""
-    bpy.ops.object.select_all(action='DESELECT')
+    """Mescla uma lista de objetos em um novo objeto e remove o parent original."""
+    bpy.ops.object.select_all(action="DESELECT")
     for obj in objects_to_merge:
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
@@ -38,16 +35,11 @@ def merge_objects(objects_to_merge, new_name):
     return None
 
 def cuco_convert_to_asset():
-    """Convert and remove assets as specified."""
+    """Converte e remove ativos conforme especificado."""
     try:
-        bpy.ops.ed.undo_push(message="Cuco Assets Conversion Start")
-        bpy.ops.object.mode_set(mode='OBJECT')
-        bpy.ops.object.select_all(action='DESELECT')
-
         objects = list(bpy.context.scene.objects)
         potential_parents = []
         objects_to_remove = []
-        removed_objects = set()
 
         for obj in objects:
             if obj.sollum_type and len(obj.children) > 0:
@@ -55,85 +47,62 @@ def cuco_convert_to_asset():
 
         first_parents = [obj for obj in potential_parents if obj.parent is None]
 
+        removed_objects = set()
+
         for first_parent in first_parents:
             if first_parent.sollum_type == "sollumz_drawable":
-                process_drawable_objects(first_parent, objects_to_remove)
+                for obj in list(first_parent.children):
+                    if obj.sollum_type == "sollumz_bound_box":
+                        objects_to_remove.append(obj)
+                    
+                    if obj.name.endswith(".model") or obj.sollum_type != "sollumz_bound_box":
+                        obj.parent = None
+                        obj.name = first_parent.name
+                        obj.asset_mark()
+                        obj.asset_generate_preview()
+                        if not hasattr(obj, "asset_data") or not obj.asset_data:
+                            objects_to_remove.append(obj)
+
+                objects_to_remove.append(first_parent)
 
             elif first_parent.sollum_type == "sollumz_fragment":
-                process_fragment_objects(first_parent, objects_to_remove, removed_objects)
+                for child in list(first_parent.children):
+                    if child.name.endswith(".col"):
+                        remove_object_and_children(child, removed_objects)
+                    elif child.name.endswith(".mesh"):
+                        drawable_models = [c for c in child.children if c.sollum_type == "sollumz_drawable_model"]
+                        if len(drawable_models) > 1:
+                            merged_obj = merge_objects(drawable_models, child.name)
+                            if merged_obj:
+                                merged_obj.name = first_parent.name
+                                merged_obj.asset_mark()
+                                merged_obj.asset_generate_preview()
+                            objects_to_remove.append(child)
+                        else:
+                            for model in drawable_models:
+                                model.name = first_parent.name
+                                model.asset_mark()
+                                model.asset_generate_preview()
+                                objects_to_remove.append(model)
 
+                objects_to_remove.append(first_parent)
+
+        # Remover objetos apenas uma vez
         for obj in objects_to_remove:
             if obj not in removed_objects:
                 remove_object_and_children(obj, removed_objects)
 
         cuco_asset_remove_suffix()
 
-        bpy.ops.ed.undo_push(message="Cuco Assets Conversion End")
-
     except Exception as e:
-        print(f"Error during asset conversion: {e}")
-
-def process_drawable_objects(first_parent, objects_to_remove):
-    """Process objects of type 'sollumz_drawable'."""
-    for obj in list(first_parent.children):
-        try:
-            if obj.sollum_type == "sollumz_bound_box":
-                objects_to_remove.append(obj)
-
-            if obj.name.endswith(".model"):
-                obj.parent = None
-                obj.name = first_parent.name
-                obj.asset_mark()
-                obj.asset_generate_preview()
-                if not hasattr(obj, "asset_data") or not obj.asset_data:
-                    objects_to_remove.append(obj)
-            else:
-                obj.parent = None
-                obj.name = first_parent.name
-                obj.asset_mark()
-                obj.asset_generate_preview()
-                if not hasattr(obj, "asset_data") or not obj.asset_data:
-                    objects_to_remove.append(obj)
-        except Exception as e:
-            print(f"Error processing object: {e}")
-
-    objects_to_remove.append(first_parent)
-
-def process_fragment_objects(first_parent, objects_to_remove, removed_objects):
-    """Process objects of type 'sollumz_fragment'."""
-    for child in list(first_parent.children):
-        try:
-            if child.name.endswith(".col"):
-                remove_object_and_children(child, removed_objects)
-            elif child.name.endswith(".mesh"):
-                drawable_models = [c for c in child.children if c.sollum_type == "sollumz_drawable_model"]
-                if len(drawable_models) > 1:
-                    merged_obj = merge_objects(drawable_models, child.name)
-                    if merged_obj:
-                        merged_obj.name = first_parent.name
-                        merged_obj.asset_mark()
-                        merged_obj.asset_generate_preview()
-                    objects_to_remove.append(child)
-                else:
-                    for model in drawable_models:
-                        model.name = first_parent.name
-                        model.asset_mark()
-                        model.asset_generate_preview()
-                        objects_to_remove.append(model)
-        except Exception as e:
-            print(f"Error processing fragment: {e}")
-
-    objects_to_remove.append(first_parent)
+        print(f"Erro durante a conversão para asset: {e}")
 
 def cuco_asset_remove_suffix():
     """Remove numeric suffixes from object names."""
     for obj in bpy.context.scene.objects:
-        try:
-            new_name = re.sub(r"\.\d+$", "", obj.name)
-            if new_name != obj.name:
-                obj.name = new_name
-        except Exception as e:
-            print(f"Error removing suffix: {e}")
+        new_name = re.sub(r"\.\d+$", "", obj.name)
+        if new_name != obj.name:
+            obj.name = new_name
 
 class ConvertToGTAVAsset(bpy.types.Operator):
     """Run the Cuco Assets Creator script"""
